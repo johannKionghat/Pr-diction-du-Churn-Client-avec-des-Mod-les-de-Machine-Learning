@@ -1,0 +1,28 @@
+# Configuration pour l'extraction des données
+data:
+  # Structure des dossiers
+  dirs:
+    base: data
+    raw: raw
+    processed: processed
+    models: models
+  
+  # Fichiers
+  files:
+    raw_data: WA_Fn-UseC_-Telco-Customer-Churn.csv
+    processed_data: telco_customer_churn_processed.parquet    
+  # Configuration Kaggle
+  kaggle:
+    dataset: blastchar/telco-customer-churn
+    kaggle_dir: .kaggle
+    kaggle_json: kaggle.json
+    
+  # Paramètres de téléchargement
+  download:
+    unzip: true
+    
+  # Paramètres d'affichage
+  display:
+    max_columns: 20
+    max_rows: 10
+    width: 1000
