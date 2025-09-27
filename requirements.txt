@@ -1,0 +1,44 @@
+# Gestion des données
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.0.0  # Pour la lecture/écriture de fichiers Excel
+
+# Machine Learning
+scikit-learn>=1.2.0
+imbalanced-learn>=0.10.0  # Pour gérer les classes déséquilibrées
+category-encoders>=2.5.0  # Pour l'encodage des variables catégorielles
+
+# Visualisation
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.13.0
+
+# Gestion des modèles
+joblib>=1.2.0
+
+# Configuration
+typing-extensions>=4.5.0
+
+# Kaggle
+kagglehub>=0.1.0
+
+# Utilitaires
+tqdm>=4.65.0  # Pour les barres de progression
+python-dotenv>=1.0.0  # Pour la gestion des variables d'environnement
+
+# Tests
+pytest>=7.3.1
+pytest-cov>=4.0.0
+
+# Qualité du code
+black>=23.3.0
+isort>=5.12.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Notebooks (optionnel)
+jupyter>=1.0.0
+ipykernel>=6.0.0
+
+# Orchestration ETL
+prefect>=2.0.0
