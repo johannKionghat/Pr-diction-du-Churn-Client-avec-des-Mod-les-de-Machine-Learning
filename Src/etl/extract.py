@@ -3,16 +3,16 @@ import yaml
 import pandas as pd
 from pathlib import Path
 import kagglehub
+import sys
 
-# Chargement de la configuration
-def load_config():
-    config_path = Path(__file__).parent.parent / 'config.yaml'
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
+# Chemins ancrés sur la racine du projet (src/etl -> src -> projet)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RAW_DATA_FILE = PROJECT_ROOT / "data" / "raw" / "WA_Fn-UseC_-Telco-Customer-Churn.csv"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
-# Chargement de la configuration
-config = load_config()
-data_config = config['data']
+# Création des répertoires si nécessaire
+os.makedirs(RAW_DATA_FILE.parent, exist_ok=True)
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 
 def setup_kaggle():
     """Vérifie que kagglehub est correctement configuré."""
@@ -31,43 +31,81 @@ def extract_data():
     Retourne le chemin vers le fichier de données brutes.
     """
     try:
-        # Définit les chemins à partir de la configuration
-        base_dir = Path('..') / data_config['dirs']['base']
-        raw_dir = base_dir / data_config['dirs']['raw']
-        raw_file = raw_dir / data_config['files']['raw_data']
+        # Vérifier si le fichier existe déjà
+        if RAW_DATA_FILE.exists():
+            print(f"Le fichier de données brutes existe déjà : {RAW_DATA_FILE}")
+            return str(RAW_DATA_FILE)
+
+        # Vérifier la configuration Kaggle
+        if not setup_kaggle():
+            raise Exception("Configuration Kaggle manquante ou incorrecte.")
+
+        print("Téléchargement du dataset depuis Kaggle Hub...")
         
-        # Vérifie si le fichier existe déjà
-        if raw_file.exists():
-            print(f"Le fichier de données brutes existe déjà : {raw_file}")
-            return str(raw_file)
+        # S'assurer que le dossier de destination existe
+        RAW_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         
-        # Crée les dossiers s'ils n'existent pas
-        raw_dir.mkdir(parents=True, exist_ok=True)
+        # Télécharger le dataset via KaggleHub (datasets)
+        # IMPORTANT: utiliser dataset_download avec un handle de dataset valide
+        dataset_handles = [
+            "blastchar/telco-customer-churn",
+            "yasserh/telco-customer-churn",
+            "pavansubhasht/telco-customer-churn",
+        ]
+
+        last_err = None
+        for handle in dataset_handles:
+            try:
+                # Tente d'écrire directement le fichier ciblé
+                kagglehub.dataset_download(handle, path=str(RAW_DATA_FILE))
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                # Sinon télécharge tout le dataset dans le dossier
+                try:
+                    kagglehub.dataset_download(handle, path=str(RAW_DATA_FILE.parent))
+                    last_err = None
+                    break
+                except Exception as e2:
+                    last_err = e2
+                    continue
+
+        # Fallback HTTP si KaggleHub échoue
+        if last_err is not None:
+            try:
+                import urllib.request
+                fallback_urls = [
+                    "https://raw.githubusercontent.com/blastchar/telco-churn/master/WA_Fn-UseC_-Telco-Customer-Churn.csv",
+                    "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv",
+                ]
+                for url in fallback_urls:
+                    try:
+                        print(f"Kaggle indisponible, tentative de téléchargement direct: {url}")
+                        urllib.request.urlretrieve(url, str(RAW_DATA_FILE))
+                        last_err = None
+                        break
+                    except Exception:
+                        continue
+                if last_err is not None:
+                    raise last_err
+            except Exception:
+                raise last_err
         
-        # Télécharge le dataset avec kagglehub
-        print(f"Téléchargement du dataset {data_config['kaggle']['dataset']} depuis Kaggle Hub...")
-        
-        # Télécharge le dataset et obtient le chemin du répertoire de téléchargement
-        dataset_path = kagglehub.dataset_download(data_config['kaggle']['dataset'])
-        
-        # Vérifie que le répertoire de téléchargement existe
-        if not Path(dataset_path).exists():
-            raise FileNotFoundError(f"Le répertoire de téléchargement {dataset_path} est introuvable.")
+        # Vérifier que le fichier a bien été téléchargé
+        if not RAW_DATA_FILE.exists():
+            # Essayer de trouver le fichier téléchargé avec un nom différent
+            csv_files = list(RAW_DATA_FILE.parent.glob('*.csv'))
+            if not csv_files:
+                raise FileNotFoundError("Le fichier n'a pas été téléchargé correctement.")
             
-        # Recherche le fichier CSV dans le répertoire téléchargé
-        csv_files = list(Path(dataset_path).glob('*.csv'))
-        if not csv_files:
-            raise FileNotFoundError("Aucun fichier CSV trouvé dans le dataset téléchargé.")
-            
-        # Prend le premier fichier CSV trouvé (normalement il n'y en a qu'un)
-        source_csv = csv_files[0]
+            # Renommer le fichier téléchargé vers le nom attendu
+            import shutil
+            source_file = csv_files[0]
+            shutil.move(source_file, RAW_DATA_FILE)
         
-        # Copie le fichier vers le dossier de destination
-        import shutil
-        shutil.copy2(source_csv, raw_file)
-        
-        print(f"\nLe dataset a été téléchargé avec succès dans : {raw_file}")
-        return str(raw_file)
+        print(f"Téléchargement terminé. Fichier enregistré : {RAW_DATA_FILE}")
+        return str(RAW_DATA_FILE)
         
     except Exception as e:
         print(f"\nErreur lors du téléchargement du dataset : {str(e)}")
@@ -80,21 +118,24 @@ if __name__ == "__main__":
         if not setup_kaggle():
             raise Exception("Configuration de kagglehub échouée. Veuillez installer kagglehub avec 'pip install kagglehub'")
             
-        # Extrait les données
-        raw_data_path = extract_data()
-        print(f"\nExtraction terminée. Données brutes disponibles à : {raw_data_path}")
-            
-    except Exception as e:
-        print(f"\nUne erreur s'est produite : {str(e)}")
-        print("\n" + "="*50)
-        print("ERREUR DE CONFIGURATION KAGGLE HUB")
-        print("="*50)
-        print("\nAssurez-vous que :")
-        print("1. Vous avez un compte Kaggle (https://www.kaggle.com/)")
-        print(f"2. Vous avez accepté les conditions d'utilisation du dataset : https://www.kaggle.com/{data_config['kaggle']['dataset']}")
-        print("3. Le package kagglehub est installé (pip install kagglehub)")
-        print("4. Vous êtes authentifié avec la commande 'kagglehub configure'")
+        # Exécute l'extraction
+        print("Démarrage de l'extraction des données...")
+        data_file = extract_data()
         
+        # Affiche un message de succès
+        print(f"\nExtraction terminée avec succès !")
+        print(f"Fichier de données : {data_file}")
+        
+    except Exception as e:
+        print(f"\nERREUR : {str(e)}")
+        print("\nDétails de l'erreur :")
+        import traceback
+        traceback.print_exc()
+        
+        print("\nConseils de dépannage :")
+        print("1. Vérifiez que vous êtes connecté à Internet")
+        print("2. Vérifiez que kagglehub est correctement configuré")
+        print("3. Vérifiez que vous avez les permissions nécessaires pour écrire dans le dossier de destination")
         print("\n" + "="*50)
         print("POUR VOUS AUTHENTIFIER :")
         print("="*50)

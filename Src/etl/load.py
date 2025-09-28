@@ -1,17 +1,26 @@
+import os
 import pandas as pd
 import yaml
 from pathlib import Path
+import sys
+
+# Détection du répertoire racine du projet
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Définition des chemins relatifs à la racine du projet
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
 class Load:
     def __init__(self):
-        pass
+        # Initialisation des chemins
+        self.RAW_DATA_DIR = Path(RAW_DATA_DIR)
+        self.PROCESSED_DATA_DIR = Path(PROCESSED_DATA_DIR)
+        
+        # Création des répertoires s'ils n'existent pas
+        self.RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    def load_config(self):
-        """Charge la configuration depuis le fichier config.yaml"""
-        config_path = Path(__file__).parent.parent / 'config.yaml'
-        with open(config_path, 'r') as file:
-            return yaml.safe_load(file)
-
     def load_data(self, file_path):
         """
         Charge les données depuis un fichier (CSV ou Parquet) et retourne un DataFrame pandas.
@@ -55,45 +64,51 @@ class Load:
 
     def save_processed_data(self, df, output_file=None):
         """
-        Sauvegarde un DataFrame dans le dossier de données traitées au format CSV.
+        Sauvegarde un DataFrame dans le dossier de données traitées au format CSV ou Parquet.
         
         Args:
             df (pd.DataFrame): DataFrame à sauvegarder
-            output_file (str, optional): Chemin du fichier de sortie. Si non spécifié, utilise un chemin par défaut.
+            output_file (str or Path, optional): Chemin du fichier de sortie. 
+                Si non spécifié, utilise un chemin par défaut.
+                Peut être un chemin relatif ou absolu.
             
         Returns:
-            str: Chemin vers le fichier sauvegardé
+            str: Chemin absolu vers le fichier sauvegardé
         """
         try:
-            # Définit le chemin de sortie par défaut si non spécifié
-            current_dir = Path(__file__).parent.absolute()
-            project_root = current_dir.parent
-            output_dir = project_root / 'data' / 'processed'
+            # Déterminer le répertoire de sortie
+            output_dir = Path(self.PROCESSED_DATA_DIR)
             
-            print(f"\n[DEBUG] Dossier de sortie : {output_dir}")
+            # Créer le répertoire s'il n'existe pas
+            output_dir.mkdir(parents=True, exist_ok=True)
             
+            # Déterminer le nom du fichier de sortie
             if output_file is None:
                 output_file = output_dir / 'telco_customer_churn_processed.parquet'
             else:
-                output_file = output_dir / Path(output_file).name
+                # Convertir en Path si c'est une chaîne
+                output_file = Path(output_file)
+                # Si c'est un chemin relatif, le rendre absolu par rapport au répertoire de sortie
+                if not output_file.is_absolute():
+                    output_file = output_dir / output_file.name
             
-            print(f"[DEBUG] Fichier de sortie : {output_file}")
-            
-            # Crée le dossier parent si nécessaire
+            # S'assurer que le répertoire parent existe
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            print(f"[DEBUG] Dossier de sortie créé : {output_file.parent}")
             
-            # Sauvegarde le fichier
+            # Sauvegarder le fichier
             output_path = str(output_file.absolute())
-            print(f"[DEBUG] Tentative de sauvegarde dans : {output_path}")
-            df.to_parquet(output_path, index=False)
             
-            # Vérifie que le fichier a été créé
-            if Path(output_path).exists():
-                print(f"[DEBUG] Fichier sauvegardé avec succès : {output_path}")
-            else:
-                print("[ERREUR] Le fichier n'a pas été créé !")
+            # Déterminer le format en fonction de l'extension
+            if str(output_file).lower().endswith('.csv'):
+                df.to_csv(output_path, index=False)
+            else:  # Par défaut, utiliser parquet
+                df.to_parquet(output_path, index=False)
             
+            # Vérifier que le fichier a été créé
+            if not Path(output_path).exists():
+                raise FileNotFoundError(f"Le fichier {output_path} n'a pas pu être créé")
+                
+            print(f"\n[SUCCÈS] Données sauvegardées avec succès : {output_path}")
             return output_path
             
         except Exception as e:
@@ -107,12 +122,8 @@ if __name__ == "__main__":
     try:
         load = Load()
         
-        # Chemin vers les données brutes
-        config = load.load_config()
-        data_config = config['data']
-        base_dir = Path('..') / data_config['dirs']['base']
-        raw_dir = base_dir / data_config['dirs']['raw']
-        raw_file = raw_dir / data_config['files']['raw_data']
+        # Chemins en dur comme demandé
+        raw_file = Path("../../data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv")
         
         # Chargement des données
         print(f"Chargement des données depuis : {raw_file}")

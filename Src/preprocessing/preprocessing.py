@@ -13,18 +13,47 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import joblib
 
-# --- paramètres reproducibles ---
+# --- Configuration des chemins ---
+from pathlib import Path
+
+# Chemins de base
+# __file__ -> .../src/preprocessing/preprocessing.py
+# parents[0] = .../src/preprocessing
+# parents[1] = .../src
+# parents[2] = .../projet3  (racine du projet)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"  # data/ à la racine du projet
+MODELS_DIR = DATA_DIR / "models_data"  # DÉPLACÉ: sous data/models
+PROCESSED_DIR = DATA_DIR / "processed"
+ARTIFACTS_DIR = MODELS_DIR / "artifacts"
+
+# Création des répertoires si nécessaire
+os.makedirs(MODELS_DIR, exist_ok=True)
+os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+print(f"[INFO] PROJECT_ROOT: {PROJECT_ROOT}")
+print(f"[INFO] MODELS_DIR: {MODELS_DIR}")
+
+# --- Paramètres ---
 RANDOM_STATE = 42
 TEST_SIZE = 0.20
-OUT_DIR = "../data/models"             # dossiers de sortie
-ARTIFACTS_DIR = "../data/models/artifacts"  # préprocesseur, metadata, etc.
-    # --- 1) target & simple checks ---
 TARGET = "Churn"
 
-os.makedirs(OUT_DIR, exist_ok=True)
-os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+# Chargement des données (robuste)
+processed_parquet = PROCESSED_DIR / "telco_customer_churn_processed.parquet"
+processed_csv = PROCESSED_DIR / "telco_customer_churn_processed.csv"
+print(f"[INFO] Emplacement attendu (parquet) : {processed_parquet}")
+print(f"[INFO] Emplacement alternatif (csv)   : {processed_csv}")
 
-df_original = pd.read_parquet("../data/processed/telco_customer_churn_processed.parquet")
+if processed_parquet.exists():
+    df_original = pd.read_parquet(processed_parquet)
+elif processed_csv.exists():
+    print("[WARN] Parquet introuvable, chargement du CSV alternatif...")
+    df_original = pd.read_csv(processed_csv)
+else:
+    raise FileNotFoundError(
+        f"Fichiers introuvables:\n - {processed_parquet}\n - {processed_csv}\n"
+        "Assurez-vous d'avoir exécuté le pipeline ETL ou de placer le fichier au bon emplacement."
+    )
 df = df_original.copy()
 
 def main():
@@ -129,25 +158,36 @@ def main():
 
     # --- 8) Sauvegarder fichiers (parquet si possible) ---
     # Parquet est recommandé (plus compact, types préservés). Si pyarrow absent -> fallback CSV.
-    def save_dataframe(df_obj, path_base):
+    def save_dataframe(df_obj, path):
         try:
-            df_obj.to_parquet(path_base + ".parquet", index=True)
-            print("Saved:", path_base + ".parquet")
+            df_obj.to_parquet(path, index=True)
+            print(f"Saved: {path}")
+            return True
         except Exception as e:
-            # fallback
-            df_obj.to_csv(path_base + ".csv", index=True)
-            print("parquet failed, saved CSV:", path_base + ".csv", " (error:", e, ")")
+            # fallback en CSV si échec avec parquet
+            csv_path = str(path).replace('.parquet', '.csv')
+            df_obj.to_csv(csv_path, index=True)
+            print(f"Parquet failed, saved CSV: {csv_path} (error: {e})")
+            return False
 
-    save_dataframe(train_df, os.path.join(OUT_DIR, "train"))
-    save_dataframe(test_df, os.path.join(OUT_DIR, "test"))
-    save_dataframe(results_df, os.path.join(OUT_DIR, "results_template"))
+    # Chemins complets pour les fichiers de sortie
+    train_path = MODELS_DIR / "train.parquet"
+    test_path = MODELS_DIR / "test.parquet"
+    results_path = MODELS_DIR / "results_template.parquet"
+    preprocessor_path = ARTIFACTS_DIR / "preprocessor.joblib"
+    metadata_path = ARTIFACTS_DIR / "metadata.json"
+
+    # Sauvegarde des données
+    save_dataframe(train_df, train_path)
+    save_dataframe(test_df, test_path)
+    save_dataframe(results_df, results_path)
 
     # --- 9) Sauvegarder préprocesseur et métadonnées ---
-    joblib.dump(preprocessor, os.path.join(ARTIFACTS_DIR, "preprocessor.joblib"))
-    print("Saved preprocessor to artifacts/preprocessor.joblib")
+    joblib.dump(preprocessor, preprocessor_path)
+    print(f"Saved preprocessor to {preprocessor_path}")
 
     metadata = {
-        "date_utc": datetime.datetime.utcnow().isoformat(),
+        "date_utc": datetime.datetime.now(datetime.UTC).isoformat(),
         "random_state": RANDOM_STATE,
         "test_size": TEST_SIZE,
         "n_rows_total": df.shape[0],
@@ -157,18 +197,33 @@ def main():
         "test_shape": list(test_df.shape),
         "train_churn_distribution": y_train.value_counts().to_dict(),
         "test_churn_distribution": y_test.value_counts().to_dict(),
-        "feature_names": feature_names
+        "feature_names": feature_names,
+        "output_paths": {
+            "train_data": str(train_path.absolute()),
+            "test_data": str(test_path.absolute()),
+            "results_template": str(results_path.absolute()),
+            "preprocessor": str(preprocessor_path.absolute()),
+            "metadata": str(metadata_path.absolute())
+        }
     }
-    with open(os.path.join(ARTIFACTS_DIR, "metadata.json"), "w") as f:
+    # Sauvegarde des métadonnées
+    with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
-    print("Saved metadata.json")
+    print(f"Saved metadata to {metadata_path}")
 
     # --- 10) Optionnel: sauvegarder mapping customerID si tu l'as ---
-    # if 'customerID' in df_original.columns:
-    #     df_original[['customerID']].loc[X_test.index].to_csv(os.path.join(ARTIFACTS_DIR, "test_customerID_map.csv"))
+    if 'customerID' in df_original.columns:
+        customer_map_path = ARTIFACTS_DIR / "test_customerID_map.csv"
+        df_original[['customerID']].loc[X_test.index].to_csv(customer_map_path)
+        print(f"Saved customer ID mapping to {customer_map_path}")
 
     # Fin
-    print("Préparation terminée. Fichiers créés dans:", OUT_DIR, "et artefacts dans:", ARTIFACTS_DIR)
+    print("\n" + "="*80)
+    print(f"Préparation terminée à {datetime.datetime.now().isoformat()}")
+    print("Fichiers créés dans:")
+    print(f"- Données: {MODELS_DIR.absolute()}")
+    print(f"- Artefacts: {ARTIFACTS_DIR.absolute()}")
+    print("="*80)
 
 if __name__ == "__main__":
     main()

@@ -8,19 +8,32 @@ Pipeline ETL complet avec Prefect.
 """
 
 import argparse
+import sys
 from pathlib import Path
 import yaml
 from prefect import flow, task, get_run_logger
-from extract import extract_data, setup_kaggle
-from transform import transform_data
-from load import Load
+
+# Ajout du dossier src au chemin de recherche Python
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
+from src.etl.extract import extract_data, setup_kaggle
+from src.etl.transform import transform_data
+from src.etl.load import Load
 
 
 def load_config():
-    """Charge la configuration à partir du fichier config.yaml."""
+    """Charge la configuration à partir du fichier config.yaml et valide son contenu."""
     config_path = Path(__file__).parent.parent / 'config.yaml'
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Fichier de configuration introuvable: {config_path}")
+    with open(config_path, 'r', encoding='utf-8') as file:
+        config = yaml.safe_load(file)
+    if not isinstance(config, dict) or 'data' not in config:
+        raise ValueError(
+            f"Configuration invalide ou vide dans {config_path}. Assurez-vous qu'elle contient une clé 'data'."
+        )
+    return config
 
 
 # ----------------------
@@ -33,7 +46,7 @@ def extraction(config, skip_extraction=False):
     logger = get_run_logger()
     data_config = config['data']
 
-    base_dir = Path('..') / data_config['dirs']['base']
+    base_dir = PROJECT_ROOT / data_config['dirs']['base']
     raw_dir = base_dir / data_config['dirs']['raw']
     raw_file = raw_dir / data_config['files']['raw_data']
 

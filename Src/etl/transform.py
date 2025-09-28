@@ -1,30 +1,23 @@
+import os
+import sys
 import pandas as pd
 import yaml
 from pathlib import Path
-from load import Load
-
-# Définition des chemins
-import os
-from pathlib import Path
-
-# Chemin vers le dossier du projet
-PROJECT_ROOT = Path(__file__).parent.parent
-
-# Chemins des dossiers
-data_dir = PROJECT_ROOT / 'Data'
-raw_data_dir = data_dir / 'raw'
-processed_data_dir = data_dir / 'processed'
 
 # Chemins des fichiers
-raw_data_file = raw_data_dir / 'WA_Fn-UseC_-Telco-Customer-Churn.csv'
-processed_data_file = processed_data_dir / 'telco_customer_churn_processed.parquet'
-processed_csv_file = processed_data_dir / 'telco_customer_churn_processed.csv'
+raw_data_file = Path("../../data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+processed_data_file = Path("../../data/processed/telco_customer_churn_processed.parquet")
+processed_csv_file = Path("../../data/processed/telco_customer_churn_processed.csv")
 
-# Chargement de la configuration
-def load_config():
-    config_path = Path(__file__).parent.parent / 'config.yaml'
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
+RAW_DATA_DIR = raw_data_file.parent
+PROCESSED_DATA_DIR = processed_data_file.parent
+
+# Création des répertoires si nécessaire
+os.makedirs(RAW_DATA_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+
+# Import relatif depuis le même package
+from .load import Load
 
 def transform_data(df):
     """

@@ -12,6 +12,11 @@ category-encoders>=2.5.0  # Pour l'encodage des variables catégorielles
 matplotlib>=3.7.0
 seaborn>=0.12.0
 plotly>=5.13.0
+streamlit>=1.36.0
+Pillow>=10.0.0
+
+# Parquet IO
+pyarrow>=14.0.0
 
 # Gestion des modèles
 joblib>=1.2.0
